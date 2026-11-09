@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PortMediterránea · Estadísticas</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#131f33;--muted:#9fb0c8;--line:#263852;--accent:#58c4ff}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#0b1220,#101d32);color:#eef5ff;font:16px system-ui,Arial,sans-serif}
+main{max-width:900px;margin:40px auto;padding:0 18px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+h1{font-size:clamp(25px,5vw,38px);margin:0}.sub{color:var(--muted);margin-top:7px}
+.pill{border:1px solid var(--line);border-radius:99px;padding:7px 12px;color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:26px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;min-height:125px}
+.label{color:var(--muted);font-size:14px}.value{font-size:clamp(28px,5vw,38px);font-weight:750;margin-top:10px;overflow-wrap:anywhere}
+.small{font-size:14px;color:var(--muted);line-height:1.6}.section{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;margin-top:16px}
+a{color:var(--accent)}button{background:#1b3857;color:#fff;border:1px solid #345778;border-radius:10px;padding:9px 13px;cursor:pointer}
+#status{margin-top:15px;color:var(--muted)}canvas{width:100%;height:180px;display:block}
+footer{margin:22px 0;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1 id="gameName">PortMediterránea</h1><div class="sub">Estadísticas públicas de la experiencia</div></div>
+    <div><button onclick="loadStats()">Actualizar vista</button></div>
+  </div>
+  <div class="grid">
+    <div class="card"><div class="label">Jugadores ahora</div><div class="value" id="playing">—</div></div>
+    <div class="card"><div class="label">Máximo por servidor</div><div class="value" id="maxPlayers">—</div></div>
+    <div class="card"><div class="label">Visitas totales</div><div class="value" id="visits">—</div></div>
+    <div class="card"><div class="label">Favoritos</div><div class="value" id="favorites">—</div></div>
+  </div>
+  <section class="section">
+    <h2>Última actualización del juego</h2>
+    <div class="value" style="font-size:22px" id="updated">—</div>
+    <p class="small">Fecha indicada por Roblox para la última actualización publicada del juego.</p>
+  </section>
+  <section class="section">
+    <h2>Historial de jugadores</h2>
+    <canvas id="chart" width="850" height="180"></canvas>
+    <div class="small" id="historyInfo">El historial empezará a formarse cuando GitHub Actions ejecute la primera consulta.</div>
+  </section>
+  <div id="status">Cargando datos…</div>
+  <footer>
+    Datos públicos consultados automáticamente desde Roblox mediante GitHub Actions.
+    <br><a href="https://www.roblox.com/es/games/137253701602745/PortMediterranea" target="_blank" rel="noopener">Abrir PortMediterránea en Roblox</a>
+  </footer>
+</main>
+<script>
+const fmt = n => Number(n).toLocaleString("es-ES");
+function drawHistory(points){
+  const c=document.getElementById("chart"),ctx=c.getContext("2d"),w=c.width,h=c.height;
+  ctx.clearRect(0,0,w,h);ctx.strokeStyle="#263852";ctx.lineWidth=1;
+  for(let i=1;i<=3;i++){let y=i*h/4;ctx.beginPath();ctx.moveTo(30,y);ctx.lineTo(w-12,y);ctx.stroke();}
+  if(!points || points.length<2){ctx.fillStyle="#9fb0c8";ctx.font="16px system-ui";ctx.fillText("Esperando más mediciones…",30,90);return;}
+  const vals=points.map(p=>p.playing),max=Math.max(1,...vals),min=Math.min(0,...vals);
+  ctx.strokeStyle="#58c4ff";ctx.lineWidth=3;ctx.beginPath();
+  points.forEach((p,i)=>{const x=30+i*(w-50)/(points.length-1),y=h-18-(p.playing-min)/(max-min||1)*(h-40);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+  ctx.stroke();
+  ctx.fillStyle="#9fb0c8";ctx.font="12px system-ui";ctx.fillText(fmt(min),3,h-15);ctx.fillText(fmt(max),3,18);
+}
+async function loadStats(){
+  const status=document.getElementById("status");
+  try{
+    const [s,h]=await Promise.all([
+      fetch("./stats.json?ts="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw Error("No se encuentra stats.json");return r.json()}),
+      fetch("./history.json?ts="+Date.now(),{cache:"no-store"}).then(r=>r.ok?r.json():[])
+    ]);
+    if(s.error) throw Error(s.error);
+    document.getElementById("gameName").textContent=s.name||"PortMediterránea";
+    document.getElementById("playing").textContent=fmt(s.playing??0);
+    document.getElementById("maxPlayers").textContent=fmt(s.maxPlayers??0);
+    document.getElementById("visits").textContent=fmt(s.visits??0);
+    document.getElementById("favorites").textContent=fmt(s.favoritedCount??0);
+    document.getElementById("updated").textContent=s.updated?new Date(s.updated).toLocaleString("es-ES",{dateStyle:"long",timeStyle:"short"}):"Sin datos";
+    document.getElementById("historyInfo").textContent=`Última medición: ${s.capturedAt?new Date(s.capturedAt).toLocaleString("es-ES"):"desconocida"} · ${h.length} mediciones guardadas.`;
+    drawHistory(h.slice(-120));
+    status.textContent="Datos cargados. La consulta automática se realiza aproximadamente cada 5 minutos.";
+  }catch(e){status.textContent="Todavía no hay datos: "+e.message+". Activa el workflow de GitHub Actions y vuelve a intentarlo.";}
+}
+loadStats();
+</script>
+</body>
+</html>
